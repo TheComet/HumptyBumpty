@@ -30,12 +30,12 @@ async def logout():
 
 
 def match_time_remaining(msg):
-    match = re.match(r"Please wait another (\d+) (seconds|minutes|hours|days) until the server can be bumped", msg)
+    match = re.match(r".*Please wait another (\d+) (seconds|minutes|hours|days) until the server can be bumped", msg)
     if match is None:
         return None
     
     value, unit = match.groups()
-    return datetime.timedelta(**{unit: value})
+    return datetime.timedelta(**{unit: int(value)})
 
 
 async def bump_in(time_to_next_bump):
@@ -51,9 +51,7 @@ async def on_message(message):
     global state
     if message.author.id != "302050872383242240":
         return ()
-    print(message)
-    print(message.content)
-    remaining = match_time_remaining(message.content)
+    remaining = match_time_remaining(message.embeds[0]["description"])
     if remaining is None and state == "ready":
         state = "check"
         await send_message("!d bump")
