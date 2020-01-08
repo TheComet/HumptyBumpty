@@ -8,13 +8,64 @@ import datetime
 
 settings = json.loads(open('settings.json', 'rb').read().decode('utf-8'))
 client = discord.Client()
-BUMP_CHANNEL_ID = "663516351544950796"
-state = "ready"
 
 
-async def send_message(msg):
-    channel = client.get_channel(BUMP_CHANNEL_ID)
-    await client.send_message(channel, msg)
+class Server(object):
+    STATE_READY = 1
+    STATE_CHECK = 2
+    STATE_WAITING = 3
+
+    def __init__(self, server_id):
+        self.state = self.STATE_READY
+        self.server_id = server_id
+
+    async def send_message(self, msg):
+        channel = client.get_channel(settings["servers"][self.server_id]["bump_channel_id"])
+        await client.send_message(channel, msg)
+
+    async def bump_in(self, time_to_next_bump):
+        print(f"{self.server_id}: Bumping in {time_to_next_bump.seconds}")
+        await asyncio.sleep(time_to_next_bump.seconds)
+        try:
+            await self.send_message("!d bump")
+        except:
+            pass
+        print(f"{self.server_id}: Bumped")
+        self.state = self.STATE_READY
+
+    async def process_message(self, message):
+        bot_specific_func = f"process_message_{settings['servers'][self.server_id]['bump_bot_id']}"
+        try:
+            await getattr(self, bot_specific_func)(message)
+        except:
+            pass
+
+    async def process_message_302050872383242240(self, message):
+        if message.author.id != settings["servers"][self.server_id]["bump_bot_id"]:
+            return ()
+
+        desc = message.embeds[0]["description"]
+        match = re.match(r".*Please wait another (\d+) (seconds|minutes|hours|days).*", desc)
+        remaining = None
+        if match is not None:
+            value, unit = match.groups()
+            remaining = datetime.timedelta(**{unit: int(value)})
+
+        print(f"{self.server_id}: desc: {desc}")
+        print(f"{self.server_id}: remaining: {remaining}")
+        print(f"{self.server_id}: state: {self.state}")
+
+        if remaining is None and self.state == self.STATE_READY:
+            self.state = self.STATE_CHECK
+            return await self.send_message("!d bump")
+
+        if remaining and self.state != self.STATE_WAITING:
+            self.state = self.STATE_WAITING
+            asyncio.ensure_future(self.bump_in(remaining))
+            return ()
+
+
+servers = dict(((server_id, Server(server_id)) for server_id, server in settings["servers"].items()))
 
 
 async def login():
@@ -29,49 +80,19 @@ async def logout():
     print("Logged out")
 
 
-def match_time_remaining(msg):
-    match = re.match(r".*Please wait another (\d+) (seconds|minutes|hours|days).*", msg)
-    if match is None:
-        return None
-    
-    value, unit = match.groups()
-    return datetime.timedelta(**{unit: int(value)})
-
-
-async def bump_in(time_to_next_bump):
-    global state
-    print(f"bumping in {time_to_next_bump}")
-    await asyncio.sleep(time_to_next_bump.seconds)
-    await send_message("!d bump")
-    print("bumpted")
-    state = "ready"
-
-
 @client.event
 async def on_message(message):
-    global state
-    if message.author.id != "302050872383242240":
-        return ()
-    desc = message.embeds[0]["description"]
-    print(f"desc: {desc}")
-    remaining = match_time_remaining(desc)
-    print(f"remaining: {remaining}")
-    print(f"state: {state}")
-    if remaining is None and state == "ready":
-        print("send check bump...")
-        state = "check"
-        return await send_message("!d bump")
-    if remaining and state != "waiting":
-        state = "waiting"
-        asyncio.ensure_future(bump_in(remaining))
-        return
-    print("Nothing done.")
+    try:
+        await servers[message.server.id].process_message(message)
+    except KeyError:
+        pass
 
 
 @client.event
 async def on_ready():
     print(f"Running as {client.user.name}")
-    await bump_in(datetime.timedelta())
+    for server_id, server in servers.items():
+        await server.bump_in(datetime.timedelta())
 
 
 def run():
@@ -86,5 +107,5 @@ def run():
     finally:
         loop.close()
 
-run()
 
+run()
