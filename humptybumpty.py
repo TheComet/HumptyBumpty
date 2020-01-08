@@ -30,7 +30,7 @@ async def logout():
 
 
 def match_time_remaining(msg):
-    match = re.match(r".*Please wait another (\d+) (seconds|minutes|hours|days) until the server can be bumped", msg)
+    match = re.match(r".*Please wait another (\d+) (seconds|minutes|hours|days).*", msg)
     if match is None:
         return None
     
@@ -43,6 +43,7 @@ async def bump_in(time_to_next_bump):
     print(f"bumping in {time_to_next_bump}")
     await asyncio.sleep(time_to_next_bump.seconds)
     await send_message("!d bump")
+    print("bumpted")
     state = "ready"
 
 
@@ -51,13 +52,20 @@ async def on_message(message):
     global state
     if message.author.id != "302050872383242240":
         return ()
-    remaining = match_time_remaining(message.embeds[0]["description"])
+    desc = message.embeds[0]["description"]
+    print(f"desc: {desc}")
+    remaining = match_time_remaining(desc)
+    print(f"remaining: {remaining}")
+    print(f"state: {state}")
     if remaining is None and state == "ready":
+        print("send check bump...")
         state = "check"
-        await send_message("!d bump")
+        return await send_message("!d bump")
     if remaining and state != "waiting":
         state = "waiting"
         asyncio.ensure_future(bump_in(remaining))
+        return
+    print("Nothing done.")
 
 
 @client.event
